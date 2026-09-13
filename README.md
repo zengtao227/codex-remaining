@@ -45,7 +45,7 @@ The child process is terminated after the response. No daemon, database, HTTP se
 
 A failed refresh keeps the last successful values in memory and shows the failure in the dropdown. Before the first successful read, unavailable values are shown as `--`.
 
-Thirty seconds is intentionally the default: the 5-hour limit can change materially during heavy use, while one short metadata query every 30 seconds is a very small workload on a modern Mac. There is no permanently running Codex child process.
+Thirty seconds is intentionally the default because the 5-hour limit can change materially during heavy use. V1 keeps the implementation simple by using one short-lived Codex child per refresh; there is no permanently running child process. The real CPU, startup, and disk-I/O cost should be measured on representative Macs before claiming a performance number or introducing a persistent connection.
 
 ## Requirements
 
