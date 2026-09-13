@@ -78,7 +78,12 @@ else
   done
 
   "$LIPO" "${BINARIES[@]}" -create -output "$MACOS_DIR/CodexRemaining"
-  "$LIPO" "$MACOS_DIR/CodexRemaining" -verify_arch "${ARCHS[@]}"
+
+  # This lipo accepts only one -verify_arch argument per invocation despite
+  # its documented "<arch> ..." usage, so verify each arch separately.
+  for arch in "${ARCHS[@]}"; do
+    "$LIPO" "$MACOS_DIR/CodexRemaining" -verify_arch "$arch"
+  done
 fi
 
 if command -v plutil >/dev/null 2>&1; then
