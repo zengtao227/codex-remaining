@@ -1,5 +1,7 @@
 # Codex Remaining
 
+![CI](https://github.com/zengtao227/codex-remaining/actions/workflows/ci.yml/badge.svg)
+
 A tiny native macOS menu-bar app that keeps your Codex quota visible at a glance.
 
 ```text
