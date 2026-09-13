@@ -45,7 +45,9 @@ The child process is terminated after the response. No daemon, database, HTTP se
 
 A failed refresh keeps the last successful values in memory and shows the failure in the dropdown. Before the first successful read, unavailable values are shown as `--`.
 
-Thirty seconds is intentionally the default because the 5-hour limit can change materially during heavy use. V1 keeps the implementation simple by using one short-lived Codex child per refresh; there is no permanently running child process. The real CPU, startup, and disk-I/O cost should be measured on representative Macs before claiming a performance number or introducing a persistent connection.
+Thirty seconds is intentionally the default because the 5-hour limit can change materially during heavy use. V1 keeps the implementation simple by using one short-lived Codex child per refresh; there is no permanently running child process.
+
+Measured on an Apple Silicon Mac (macOS, codex-cli 0.147.0, one machine, ~3.5 minutes of observation): each refresh's `codex app-server` child completed in roughly 1 second end-to-end (initialize + `account/rateLimits/read` + exit) and never overlapped with the next cycle. The app's own idle CPU was 0.0% between refreshes; a refresh briefly touched low single-digit CPU percent for under two seconds. Resident memory stayed in the 40–55 MB range over the observation window with no runaway growth and no leftover/zombie child processes. This is one data point on one Mac, not a guarantee across every machine or Codex CLI version — if you observe materially different behavior, please open an issue with your measurements before assuming the architecture needs to change.
 
 ## Requirements
 
