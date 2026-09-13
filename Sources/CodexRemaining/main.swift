@@ -547,6 +547,6 @@ if CommandLine.arguments.contains("--self-test") {
 }
 
 let app = NSApplication.shared
-let delegate = AppDelegate()
+private let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
