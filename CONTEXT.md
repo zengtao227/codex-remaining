@@ -84,7 +84,8 @@ Requirements:
 - enabled → checked;
 - not registered → unchecked;
 - requires approval → mixed state plus a visible route to macOS Login Items settings;
-- unavailable/unknown state → disabled with a concise explanation;
+- `notFound` remains actionable because ServiceManagement can report it before the system has seen the main-app login item; registration then provides the concrete success/error result;
+- unknown future state → disabled with a concise explanation;
 - register/unregister failures are surfaced in the menu;
 - no LaunchAgent and no helper login app.
 

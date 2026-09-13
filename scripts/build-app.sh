@@ -77,7 +77,7 @@ else
     BINARIES+=("$binary")
   done
 
-  "$LIPO" -create "${BINARIES[@]}" -output "$MACOS_DIR/CodexRemaining"
+  "$LIPO" "${BINARIES[@]}" -create -output "$MACOS_DIR/CodexRemaining"
   "$LIPO" "$MACOS_DIR/CodexRemaining" -verify_arch "${ARCHS[@]}"
 fi
 

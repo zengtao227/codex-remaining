@@ -26,6 +26,9 @@ ZIP_PATH="$DIST_DIR/Codex-Remaining-$EXPECTED_TAG-universal.zip"
 CHECKSUM_PATH="$ZIP_PATH.sha256"
 
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
-/usr/bin/shasum -a 256 "$ZIP_PATH" > "$CHECKSUM_PATH"
+(
+  cd "$DIST_DIR"
+  /usr/bin/shasum -a 256 "$(basename "$ZIP_PATH")" > "$(basename "$CHECKSUM_PATH")"
+)
 
 printf '%s\n' "$ZIP_PATH" "$CHECKSUM_PATH"

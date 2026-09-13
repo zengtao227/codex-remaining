@@ -395,10 +395,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             switch service.status {
             case .enabled, .requiresApproval:
                 try service.unregister()
-            case .notRegistered:
+            case .notRegistered, .notFound:
                 try service.register()
-            case .notFound:
-                break
             @unknown default:
                 break
             }
@@ -499,12 +497,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 loginNoticeItem.isHidden = false
             }
         case .notFound:
+            // ServiceManagement can report notFound before it has ever seen
+            // this main-app login item. Keep the control actionable and let
+            // register() surface a concrete error if registration is invalid.
             launchAtLoginItem.state = .off
-            launchAtLoginItem.isEnabled = false
-            if !preserveError || loginNoticeItem.isHidden {
-                loginNoticeItem.title = "Launch at Login is unavailable"
-                loginNoticeItem.isHidden = false
-            }
         @unknown default:
             launchAtLoginItem.state = .off
             launchAtLoginItem.isEnabled = false
