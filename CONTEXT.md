@@ -1,8 +1,8 @@
 # Codex Remaining — Context
 
-## Problem
+## Product
 
-Codex exposes 5-hour and weekly usage limits, but the official TUI display is session-bound. The desired experience is an always-visible macOS menu-bar indicator that can be glanced at while working in any app.
+Codex Remaining is a native macOS menu-bar app that keeps Codex 5-hour and weekly **remaining** quota visible outside the Codex TUI.
 
 Primary UX:
 
@@ -10,17 +10,29 @@ Primary UX:
 ⚡ 5h 84%  W 67%
 ```
 
-The percentages are **remaining**, not consumed.
+## V1 status
 
-## Product decisions
+V1 is complete and host-accepted.
 
-### Native menu bar, not a floating window
+Verified on a real Apple Silicon Mac with codex-cli 0.147.0:
 
-Use AppKit `NSStatusItem`. A menu-bar item is always visible, requires no window tracking, and directly matches the two-number requirement.
+- native AppKit menu-bar UI works;
+- real `account/rateLimits/read` data matches the displayed 5h/weekly remaining values;
+- 30-second refresh works without overlap or leaked child processes;
+- one-shot app-server child lifetime is roughly one second on the measured host;
+- idle CPU is effectively zero between refreshes and RSS remained stable during the acceptance window;
+- transient failures preserve last-good values;
+- GitHub macOS CI builds and runs the parser/business-rule self-tests.
 
-Do not attach to the Codex desktop pet, use Accessibility, or create a floating HUD unless a future concrete requirement justifies it.
+Do not reopen the V1 quota/data architecture without a concrete regression.
 
-### Official local Codex data path
+## Core architecture
+
+### Native menu bar
+
+Use AppKit `NSStatusItem`. `LSUIElement=true` keeps the app out of the Dock and presents it as a menu-bar utility.
+
+### Codex data boundary
 
 Use the installed Codex CLI as the authentication/data boundary:
 
@@ -30,7 +42,7 @@ codex app-server --stdio
   → account/rateLimits/read
 ```
 
-Do not parse Codex credential files, call private ChatGPT endpoints, or scrape local databases/logs.
+Never parse Codex credential files, call private ChatGPT endpoints, or scrape local databases/logs.
 
 ### Window mapping
 
@@ -49,78 +61,110 @@ remaining = clamp(100 - usedPercent, 0...100)
 
 Null/missing values mean unavailable and render as `--`.
 
-### 30-second refresh
+### Refresh lifecycle
 
-The default refresh interval is 30 seconds. This is deliberately more frequent than a typical 5-minute quota poll because the 5-hour remaining percentage can change quickly during heavy use, especially near the limit.
-
-The cost remains bounded: one short-lived `codex app-server` process, two JSON-RPC requests, response parsing, then termination. There is no persistent Codex child process.
-
-If later measurement on real hardware shows meaningful cost, change the single refresh constant based on evidence rather than adding adaptive scheduling pre-emptively.
+Refresh on launch, every 30 seconds, and manually. Each refresh starts one short-lived `codex app-server` child and terminates it after receiving the target JSON-RPC response. The measured V1 host behavior is good enough that there is no current requirement for a persistent app-server connection.
 
 ### Last-good behavior
 
-Transient failures keep the last successful values in memory. The detail menu shows the failure while retaining useful quota numbers.
+Transient failures retain the last successful snapshot in memory. There is no disk usage cache.
 
-No disk cache in V1. After app restart, if no fresh read succeeds, values are `--`.
+## V1.1 — Distribution and startup UX
 
-## V1 scope
+V1.1 addresses the concrete product gap discovered after V1: the menu-bar item exists only while the app process is running, and ordinary users should not need to clone/build the project to use it.
 
-Required:
+### Launch at Login
 
-1. `⚡ 5h NN%  W NN%` menu-bar text.
-2. 20-cell remaining bars in the dropdown.
-3. Reset countdown for each known window.
-4. Refresh on launch and every 30 seconds.
-5. Manual Refresh.
-6. Last successful update timestamp.
-7. Preserve last-good values on transient failure.
-8. Quit.
+Use macOS 13+ `ServiceManagement.SMAppService.mainApp`.
 
-Explicitly out of scope:
+Requirements:
 
-- login item / LaunchAgent
+- default OFF; never silently register the app;
+- menu item reflects the real ServiceManagement state;
+- enabled → checked;
+- not registered → unchecked;
+- requires approval → mixed state plus a visible route to macOS Login Items settings;
+- unavailable/unknown state → disabled with a concise explanation;
+- register/unregister failures are surfaced in the menu;
+- no LaunchAgent and no helper login app.
+
+The menu state is refreshed whenever the menu opens so changes made in System Settings are reflected immediately.
+
+### Installation model
+
+Normal-user flow:
+
+```text
+GitHub Release zip
+  → unzip
+  → move Codex Remaining.app to /Applications
+  → launch from Applications / Spotlight
+  → optionally enable Launch at Login from the menu
+```
+
+Manual developer launch remains:
+
+```bash
+open "build/Codex Remaining.app"
+```
+
+### Release packaging
+
+`Info.plist` version for this phase is `0.2.0` (a backward-compatible feature increment from 0.1.0).
+
+Release packaging must produce one universal `arm64 + x86_64` app archive so users do not have to choose an architecture.
+
+Expected asset shape:
+
+```text
+dist/Codex-Remaining-v0.2.0-universal.zip
+dist/Codex-Remaining-v0.2.0-universal.zip.sha256
+```
+
+A tag-driven GitHub Actions workflow should:
+
+1. check out the tagged commit;
+2. build and run self-tests;
+3. require the tag to match `CFBundleShortVersionString`;
+4. build the universal package;
+5. publish the zip and checksum as a GitHub Release.
+
+### Signing/notarization boundary
+
+Local and CI builds are currently ad-hoc signed. That is sufficient for development and acceptance but is **not** Developer ID signing/notarization.
+
+Do not claim a Gatekeeper-clean public distribution until Apple Developer ID credentials and notarization are configured. Do not invent credentials or weaken Gatekeeper. The release workflow can be structurally ready before those credentials exist.
+
+## Explicitly out of scope for V1.1
+
+- persistent app-server connection
+- daemon/service architecture
+- LaunchAgent
+- helper login app
+- settings/preferences window
 - notifications
-- graphs/history
-- monthly quota or credit/banked-reset UI
-- settings/preferences
+- usage history/graphs
+- monthly quota or credits UI
 - telemetry
 - auto updater
 - multi-account support
-- daemon/service architecture
-- persistent app-server connection
 
 ## Implementation shape
 
-Keep V1 deliberately small:
+Keep the implementation deliberately small:
 
 ```text
 Sources/CodexRemaining/main.swift
 Info.plist
 scripts/build-app.sh
 scripts/test.sh
+scripts/package-release.sh
+.github/workflows/ci.yml
+.github/workflows/release.yml
 ```
 
-The single Swift source contains three straightforward sections:
-
-1. response model/parser;
-2. short-lived Codex app-server query;
-3. AppKit menu-bar controller.
-
-Do not split these into service/controller/repository abstractions until actual code growth or testing pressure demonstrates a need.
-
-## Failure policy
-
-- Codex executable unavailable → show `--`, surface concise error in dropdown.
-- Query timeout → keep last-good values if present.
-- RPC error → keep last-good values if present.
-- Expected response structure unavailable → do not crash; show unavailable values if there is no last-good state.
-- Extra/unknown response fields → ignore.
-- Unknown duration buckets → ignore.
+Do not split the Swift source into service/controller/repository layers until a concrete maintenance or correctness problem requires it.
 
 ## Compatibility risk
 
-`codex app-server` is currently experimental. The proportionate compatibility strategy is tolerant decoding plus graceful unavailable/error states, not a version matrix or compatibility framework.
-
-## Public-project intent
-
-The repository is intended to be understandable and auditable by other Codex users. Security/privacy claims should remain narrow and factual: the application delegates credential handling to Codex and does not implement its own authentication path.
+`codex app-server` remains experimental. The proportionate compatibility strategy is tolerant decoding and graceful unavailable/error states, not a version matrix or compatibility framework.

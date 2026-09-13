@@ -12,3 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build and run self-tests
         run: bash ./scripts/test.sh
+
+      - name: Build universal release package
+        run: |
+          VERSION="$(plutil -extract CFBundleShortVersionString raw -o - Info.plist)"
+          bash ./scripts/package-release.sh "v$VERSION"

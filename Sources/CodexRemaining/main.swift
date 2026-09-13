@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ServiceManagement
 import Darwin
 
 private let refreshInterval: TimeInterval = 30
@@ -235,7 +236,7 @@ private struct CodexClient {
             }
         }
 
-        let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-remaining","version":"0.1.0"}}}"#
+        let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-remaining","version":"0.2.0"}}}"#
         let readLimits = #"{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":null}"#
 
         do {
@@ -344,6 +345,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private let weeklyResetItem = NSMenuItem(title: "        reset unavailable", action: nil, keyEquivalent: "")
     private let updatedItem = NSMenuItem(title: "Last updated --", action: nil, keyEquivalent: "")
     private let failureItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+    private let launchAtLoginItem = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
+    private let loginSettingsItem = NSMenuItem(title: "Open Login Items Settings…", action: nil, keyEquivalent: "")
+    private let loginNoticeItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
 
     private var snapshot: UsageSnapshot?
     private var lastSuccessfulUpdate: Date?
@@ -355,6 +359,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         configureMenu()
+        updateLaunchAtLoginMenu()
 
         timer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -368,6 +373,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        updateLaunchAtLoginMenu()
+
         guard let lastAttempt else {
             refresh()
             return
@@ -379,6 +386,33 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     @objc private func refreshFromMenu() {
         refresh()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+
+        do {
+            switch service.status {
+            case .enabled, .requiresApproval:
+                try service.unregister()
+            case .notRegistered:
+                try service.register()
+            case .notFound:
+                break
+            @unknown default:
+                break
+            }
+            loginNoticeItem.isHidden = true
+        } catch {
+            loginNoticeItem.title = "⚠︎ Launch at Login: \(error.localizedDescription)"
+            loginNoticeItem.isHidden = false
+        }
+
+        updateLaunchAtLoginMenu(preserveError: true)
+    }
+
+    @objc private func openLoginItemsSettings() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     @objc private func quit() {
@@ -406,6 +440,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         refreshItem.target = self
         refreshItem.isEnabled = true
 
+        launchAtLoginItem.action = #selector(toggleLaunchAtLogin)
+        launchAtLoginItem.target = self
+        launchAtLoginItem.isEnabled = true
+
+        loginSettingsItem.action = #selector(openLoginItemsSettings)
+        loginSettingsItem.target = self
+        loginSettingsItem.isEnabled = true
+        loginSettingsItem.isHidden = true
+
+        loginNoticeItem.isEnabled = false
+        loginNoticeItem.isHidden = true
+
         let quitItem = NSMenuItem(title: "Quit Codex Remaining", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         quitItem.isEnabled = true
@@ -422,7 +468,51 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         menu.addItem(failureItem)
         menu.addItem(.separator())
         menu.addItem(refreshItem)
+        menu.addItem(.separator())
+        menu.addItem(launchAtLoginItem)
+        menu.addItem(loginSettingsItem)
+        menu.addItem(loginNoticeItem)
+        menu.addItem(.separator())
         menu.addItem(quitItem)
+    }
+
+    private func updateLaunchAtLoginMenu(preserveError: Bool = false) {
+        let status = SMAppService.mainApp.status
+
+        launchAtLoginItem.title = "Launch at Login"
+        launchAtLoginItem.isEnabled = true
+        loginSettingsItem.isHidden = true
+        if !preserveError {
+            loginNoticeItem.isHidden = true
+        }
+
+        switch status {
+        case .enabled:
+            launchAtLoginItem.state = .on
+        case .notRegistered:
+            launchAtLoginItem.state = .off
+        case .requiresApproval:
+            launchAtLoginItem.state = .mixed
+            loginSettingsItem.isHidden = false
+            if !preserveError || loginNoticeItem.isHidden {
+                loginNoticeItem.title = "Login launch needs approval in System Settings"
+                loginNoticeItem.isHidden = false
+            }
+        case .notFound:
+            launchAtLoginItem.state = .off
+            launchAtLoginItem.isEnabled = false
+            if !preserveError || loginNoticeItem.isHidden {
+                loginNoticeItem.title = "Launch at Login is unavailable"
+                loginNoticeItem.isHidden = false
+            }
+        @unknown default:
+            launchAtLoginItem.state = .off
+            launchAtLoginItem.isEnabled = false
+            if !preserveError || loginNoticeItem.isHidden {
+                loginNoticeItem.title = "Launch at Login status is unavailable"
+                loginNoticeItem.isHidden = false
+            }
+        }
     }
 
     private func refresh() {

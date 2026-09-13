@@ -18,35 +18,78 @@ else
   exit 1
 fi
 
-case "$(uname -m)" in
-  arm64|x86_64) TARGET_ARCH="$(uname -m)" ;;
-  *)
-    echo "error: unsupported Mac architecture: $(uname -m)" >&2
-    exit 1
-    ;;
-esac
-TARGET="$TARGET_ARCH-apple-macosx13.0"
+DEFAULT_ARCH="$(uname -m)"
+ARCHS_STRING="${CODEX_REMAINING_ARCHS:-$DEFAULT_ARCH}"
+read -r -a ARCHS <<< "$ARCHS_STRING"
+
+if [ "${#ARCHS[@]}" -eq 0 ]; then
+  echo "error: no build architectures specified" >&2
+  exit 1
+fi
+
+for arch in "${ARCHS[@]}"; do
+  case "$arch" in
+    arm64|x86_64) ;;
+    *)
+      echo "error: unsupported Mac architecture: $arch" >&2
+      exit 1
+      ;;
+  esac
+done
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR"
+mkdir -p "$MACOS_DIR" "$BUILD_DIR"
 cp "$ROOT/Info.plist" "$APP_DIR/Contents/Info.plist"
 
-"$SWIFTC" \
-  -O \
-  -target "$TARGET" \
-  "${SDK_ARGS[@]}" \
-  -framework AppKit \
-  "$ROOT/Sources/CodexRemaining/main.swift" \
-  -o "$MACOS_DIR/CodexRemaining"
+compile_arch() {
+  local arch="$1"
+  local output="$2"
+
+  "$SWIFTC" \
+    -O \
+    -target "$arch-apple-macosx13.0" \
+    "${SDK_ARGS[@]}" \
+    -framework AppKit \
+    -framework ServiceManagement \
+    "$ROOT/Sources/CodexRemaining/main.swift" \
+    -o "$output"
+}
+
+if [ "${#ARCHS[@]}" -eq 1 ]; then
+  compile_arch "${ARCHS[0]}" "$MACOS_DIR/CodexRemaining"
+else
+  if command -v xcrun >/dev/null 2>&1; then
+    LIPO="$(xcrun --find lipo)"
+  elif command -v lipo >/dev/null 2>&1; then
+    LIPO="$(command -v lipo)"
+  else
+    echo "error: lipo not found; universal builds require Apple's toolchain" >&2
+    exit 1
+  fi
+
+  TEMP_DIR="$(mktemp -d "$BUILD_DIR/.codex-remaining.XXXXXX")"
+  trap 'rm -rf "$TEMP_DIR"' EXIT
+
+  BINARIES=()
+  for arch in "${ARCHS[@]}"; do
+    binary="$TEMP_DIR/CodexRemaining-$arch"
+    compile_arch "$arch" "$binary"
+    BINARIES+=("$binary")
+  done
+
+  "$LIPO" -create "${BINARIES[@]}" -output "$MACOS_DIR/CodexRemaining"
+  "$LIPO" "$MACOS_DIR/CodexRemaining" -verify_arch "${ARCHS[@]}"
+fi
 
 if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
 fi
 
-# Ad-hoc signing avoids an avoidable unsigned-bundle warning during local development.
-# Distribution signing/notarization is intentionally out of scope for V1.
+# Local and CI builds are ad-hoc signed. Public Gatekeeper-clean distribution
+# requires Developer ID signing and notarization, which need Apple credentials.
 if command -v codesign >/dev/null 2>&1; then
   codesign --force --sign - "$APP_DIR" >/dev/null
+  codesign --verify --deep --strict "$APP_DIR"
 fi
 
 echo "$APP_DIR"
