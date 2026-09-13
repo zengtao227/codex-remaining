@@ -2,6 +2,8 @@
 
 ![CI](https://github.com/zengtao227/codex-remaining/actions/workflows/ci.yml/badge.svg)
 
+**Current release:** [v0.2.0 — download the universal macOS build](https://github.com/zengtao227/codex-remaining/releases/tag/v0.2.0)
+
 A tiny native macOS menu-bar app that keeps your Codex quota visible at a glance.
 
 ```text
@@ -14,11 +16,62 @@ Click the menu-bar item for 20-cell remaining-quota bars, reset countdowns, last
 
 Codex exposes 5-hour and weekly limits, but the official TUI status line is only visible while a Codex terminal session is open. Codex Remaining keeps the same two numbers visible wherever you are working.
 
-## Install and launch
+## Install from GitHub Release
 
 Codex Remaining is a menu-bar-only app. While it is running, it appears at the top of macOS; when you quit the process, the menu-bar item disappears.
 
-For a normal installation, place `Codex Remaining.app` in `/Applications`, then launch it from Applications or Spotlight. From Terminal you can also use:
+1. Download both files from the [v0.2.0 GitHub Release](https://github.com/zengtao227/codex-remaining/releases/tag/v0.2.0):
+
+   ```text
+   Codex-Remaining-v0.2.0-universal.zip
+   Codex-Remaining-v0.2.0-universal.zip.sha256
+   ```
+
+2. Optional but recommended: verify the downloaded archive before opening it.
+
+   ```bash
+   cd ~/Downloads
+   shasum -a 256 -c Codex-Remaining-v0.2.0-universal.zip.sha256
+   ```
+
+   A successful verification ends with:
+
+   ```text
+   Codex-Remaining-v0.2.0-universal.zip: OK
+   ```
+
+3. Double-click the zip, then move `Codex Remaining.app` into `/Applications`.
+
+4. Launch **Codex Remaining** from Applications or Spotlight. It appears in the macOS menu bar rather than the Dock.
+
+### First launch and macOS Gatekeeper
+
+The current v0.2.0 release is **ad-hoc signed and not Apple-notarized**. macOS may therefore block the first launch because it cannot verify an identified developer/notarization ticket.
+
+Only override that warning if you downloaded the app from this repository's official GitHub Release and you trust the download. Verifying the SHA-256 checksum above provides an additional integrity check against the published release asset.
+
+If macOS blocks the app:
+
+1. Try to open `Codex Remaining.app` once.
+2. Open **System Settings → Privacy & Security**.
+3. Scroll to the **Security** section and choose **Open Anyway** for Codex Remaining.
+4. Confirm **Open** when macOS asks again.
+
+Apple documents this exception flow for apps that have not been notarized or are from an unidentified developer: <https://support.apple.com/102445>.
+
+macOS then remembers that exception for the app, so subsequent launches can be done normally from Applications or Spotlight. Apple notes that **Open Anyway** is available for about an hour after the blocked launch attempt.
+
+Do **not** disable Gatekeeper globally and do not remove quarantine attributes just to run Codex Remaining. On managed Macs, your organization may prevent security overrides; follow your administrator's policy in that case.
+
+### Launch at Login
+
+Launch at Login is **off by default**. After the app is running, open the Codex Remaining menu and enable **Launch at Login** if you want it to return automatically after signing in to macOS.
+
+V0.2.0 uses Apple's native `SMAppService.mainApp` API. If macOS requires approval, the menu shows that state and provides **Open Login Items Settings…**. No LaunchAgent or helper app is installed by Codex Remaining.
+
+### Launch from Terminal
+
+After installing into `/Applications`:
 
 ```bash
 open -a "Codex Remaining"
@@ -30,12 +83,6 @@ During source development:
 ./scripts/build-app.sh
 open "build/Codex Remaining.app"
 ```
-
-### Launch at Login
-
-Launch at Login is **off by default**. Enable it from the Codex Remaining menu when you want the app to return automatically after signing in to macOS.
-
-V0.2.0 uses Apple's native `SMAppService.mainApp` API. If macOS requires approval, the menu shows that state and provides **Open Login Items Settings…**. No LaunchAgent or helper app is installed by Codex Remaining.
 
 ## Data source and privacy
 
@@ -119,9 +166,9 @@ A push of a matching `v*` tag triggers `.github/workflows/release.yml`, runs the
 
 ## Signing and notarization
 
-Current local and CI builds are **ad-hoc signed**, not Developer ID signed/notarized. That is sufficient for development and host acceptance, but macOS Gatekeeper may require additional user approval for a downloaded public release.
+The current v0.2.0 public release is **ad-hoc signed**, not Developer ID signed or Apple-notarized. That is sufficient for development and host acceptance, but it means a freshly downloaded copy may require the one-time **Open Anyway** flow described above.
 
-Do not disable Gatekeeper for this app. A future distribution step can add Developer ID signing and Apple notarization once the required Apple Developer credentials are available.
+Developer ID signing/notarization is intentionally deferred. Do not disable Gatekeeper or remove quarantine attributes for this app; use macOS's per-app security exception only if you trust and have verified the official release download.
 
 ## Current scope
 
@@ -151,7 +198,7 @@ The app delegates authentication to the installed Codex CLI. It never parses or 
 
 ## Project status
 
-V1 quota display and refresh behavior are host-accepted. V0.2.0 adds startup/distribution UX. The Codex `app-server` interface remains experimental and may change in future Codex releases.
+V0.2.0 is the current stable release. Quota display, 30-second refresh, Launch at Login, universal packaging, and the GitHub Release flow are host-accepted. Developer ID signing/notarization is deferred; the current release therefore uses the documented one-time Gatekeeper exception flow. The Codex `app-server` interface remains experimental and may change in future Codex releases.
 
 ## License
 
