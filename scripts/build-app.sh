@@ -6,8 +6,11 @@ BUILD_DIR="$ROOT/build"
 APP_DIR="$BUILD_DIR/Codex Remaining.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 
+SDK_ARGS=()
 if command -v xcrun >/dev/null 2>&1; then
-  SWIFTC="$(xcrun --find swiftc)"
+  SWIFTC="$(xcrun --sdk macosx --find swiftc)"
+  SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+  SDK_ARGS=(-sdk "$SDK_PATH")
 elif command -v swiftc >/dev/null 2>&1; then
   SWIFTC="$(command -v swiftc)"
 else
@@ -15,12 +18,23 @@ else
   exit 1
 fi
 
+case "$(uname -m)" in
+  arm64|x86_64) TARGET_ARCH="$(uname -m)" ;;
+  *)
+    echo "error: unsupported Mac architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+TARGET="$TARGET_ARCH-apple-macosx13.0"
+
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
 cp "$ROOT/Info.plist" "$APP_DIR/Contents/Info.plist"
 
 "$SWIFTC" \
   -O \
+  -target "$TARGET" \
+  "${SDK_ARGS[@]}" \
   -framework AppKit \
   "$ROOT/Sources/CodexRemaining/main.swift" \
   -o "$MACOS_DIR/CodexRemaining"
