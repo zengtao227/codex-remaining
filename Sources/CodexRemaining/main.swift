@@ -236,7 +236,7 @@ private struct CodexClient {
             }
         }
 
-        let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-remaining","version":"0.2.0"}}}"#
+        let initialize = #"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-remaining","version":"0.2.1"}}}"#
         let readLimits = #"{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":null}"#
 
         do {

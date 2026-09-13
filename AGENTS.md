@@ -20,15 +20,17 @@ Codex Remaining is a tiny native macOS menu-bar utility that shows remaining Cod
 
 V1 is complete and host-accepted.
 
-V1.1 adds only the concrete distribution/startup needs that now exist:
+V0.2.0 distribution/startup UX is complete and released.
 
-1. menu-bar text `⚡ 5h NN%  W NN%` and existing V1 details;
-2. native `Launch at Login` using `SMAppService.mainApp`, default off;
-3. visible approval state with a shortcut to macOS Login Items settings when required;
-4. universal release packaging for arm64 + x86_64;
-5. tag-driven GitHub Release packaging.
+The current distribution task adds only:
 
-Do not add a helper login app, LaunchAgent, settings window, notifications, history, monthly usage, credits UI, telemetry, auto-update, or account switching without a concrete user request.
+1. Developer ID Application signing for public releases;
+2. Hardened Runtime and secure timestamp;
+3. Apple notarization with `notarytool`;
+4. ticket stapling and Gatekeeper verification of the exact release archive;
+5. GitHub Actions secret handling for signing/notarization credentials.
+
+Do not change quota behavior or Launch at Login while doing distribution work. Do not add a helper login app, LaunchAgent, settings window, notifications, history, monthly usage, credits UI, telemetry, auto-update, or account switching without a concrete user request.
 
 Prefer deleting/simplifying over adding abstractions. Keep the main implementation in one Swift source file until a real maintenance or correctness problem justifies splitting it.
 
@@ -44,6 +46,9 @@ Prefer deleting/simplifying over adding abstractions. Keep the main implementati
 - `./scripts/build-app.sh` builds the `.app` using the installed Apple toolchain.
 - `./scripts/test.sh` builds then runs the binary's in-process parser/self-tests.
 - `./scripts/package-release.sh vX.Y.Z` must reject a tag that does not match `Info.plist` and produce a universal zip + SHA-256 checksum when run on macOS.
-- Login startup must use ServiceManagement only; verify register/unregister/status on a real Mac before tagging a release.
+- Normal CI/source builds may remain ad-hoc signed; a public release must fail closed unless Developer ID signing and notarization credentials are present.
+- A notarized release must verify Developer ID signing, Hardened Runtime, secure timestamp, Accepted notary status, stapled ticket, Gatekeeper assessment, and both arm64/x86_64 slices.
+- Login startup must remain ServiceManagement-only; do not add LaunchAgent/helper plumbing.
+- Never commit `.p12` or App Store Connect `.p8` private keys.
 - Do not install packages as part of build or test.
 - The user has authorized normal commit/push for this project; never force-push or rewrite history.

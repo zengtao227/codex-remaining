@@ -111,30 +111,37 @@ open "build/Codex Remaining.app"
 
 ### Release packaging
 
-`Info.plist` version for this phase is `0.2.0` (a backward-compatible feature increment from 0.1.0).
+V0.2.0 is the stable released baseline. The signed-distribution candidate is `0.2.1` / build 3; it changes distribution only, not app behavior.
 
-Release packaging must produce one universal `arm64 + x86_64` app archive so users do not have to choose an architecture.
+Release packaging produces one universal `arm64 + x86_64` archive so users do not choose an architecture.
 
 Expected asset shape:
 
 ```text
-dist/Codex-Remaining-v0.2.0-universal.zip
-dist/Codex-Remaining-v0.2.0-universal.zip.sha256
+dist/Codex-Remaining-v0.2.1-universal.zip
+dist/Codex-Remaining-v0.2.1-universal.zip.sha256
 ```
 
-A tag-driven GitHub Actions workflow should:
+### Developer ID signing and notarization
 
-1. check out the tagged commit;
-2. build and run self-tests;
-3. require the tag to match `CFBundleShortVersionString`;
-4. build the universal package;
-5. publish the zip and checksum as a GitHub Release.
+Normal source/CI builds remain ad-hoc signed. Public releases must fail closed unless the release workflow has Apple credentials.
 
-### Signing/notarization boundary
+The public release path must:
 
-Local and CI builds are currently ad-hoc signed. That is sufficient for development and acceptance but is **not** Developer ID signing/notarization.
+1. import one Developer ID Application `.p12` into a temporary CI keychain;
+2. build the universal app;
+3. sign with Developer ID Application, Hardened Runtime, and secure timestamp;
+4. verify the signature before upload;
+5. submit a temporary zip with `notarytool --wait` using an App Store Connect Team API key;
+6. require Apple status `Accepted`;
+7. staple and validate the ticket on the app;
+8. run Gatekeeper assessment;
+9. build the public zip only after stapling;
+10. re-extract that exact archive and repeat signature, universal-architecture, staple, and Gatekeeper checks.
 
-Do not claim a Gatekeeper-clean public distribution until Apple Developer ID credentials and notarization are configured. Do not invent credentials or weaken Gatekeeper. The release workflow can be structurally ready before those credentials exist.
+The workflow supports a manual dry-run that uploads a notarized workflow artifact without creating a GitHub Release. Create the version tag only after that dry-run and a real-Mac launch/Gatekeeper check pass.
+
+Never commit `.p12`/`.p8` credentials, disable Hardened Runtime/Gatekeeper checks, or fall back to ad-hoc signing for a public release.
 
 ## Explicitly out of scope for V1.1
 

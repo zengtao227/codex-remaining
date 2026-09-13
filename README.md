@@ -100,32 +100,43 @@ The test command builds the app and runs parser/business-rule self-tests without
 
 ## Package a release
 
-V0.2.0 adds a universal `arm64 + x86_64` package for distribution:
+The release package is one universal `arm64 + x86_64` archive:
 
 ```bash
-./scripts/package-release.sh v0.2.0
+./scripts/package-release.sh v0.2.1
 ```
 
-It produces:
+Without Apple release credentials this produces an ad-hoc-signed validation package. The public release workflow supplies Developer ID/notarization credentials and fails closed if they are missing.
+
+Expected assets:
 
 ```text
-dist/Codex-Remaining-v0.2.0-universal.zip
-dist/Codex-Remaining-v0.2.0-universal.zip.sha256
+dist/Codex-Remaining-v0.2.1-universal.zip
+dist/Codex-Remaining-v0.2.1-universal.zip.sha256
 ```
 
 The packaging script rejects a tag that does not match `CFBundleShortVersionString`.
 
-A push of a matching `v*` tag triggers `.github/workflows/release.yml`, runs the self-tests, builds the universal archive, and publishes the archive plus SHA-256 checksum to the GitHub Release.
-
 ## Signing and notarization
 
-Current local and CI builds are **ad-hoc signed**, not Developer ID signed/notarized. That is sufficient for development and host acceptance, but macOS Gatekeeper may require additional user approval for a downloaded public release.
+The signed-distribution pipeline uses:
 
-Do not disable Gatekeeper for this app. A future distribution step can add Developer ID signing and Apple notarization once the required Apple Developer credentials are available.
+- **Developer ID Application** signing;
+- Hardened Runtime;
+- a secure signing timestamp;
+- Apple's `notarytool` service;
+- ticket stapling;
+- Gatekeeper assessment of the final extracted archive.
+
+Normal source/CI builds remain ad-hoc signed so contributors don't need Apple credentials. Public releases use the stricter path and do not fall back to ad-hoc signing.
+
+Before creating a tag, the Release workflow can be run manually as a notarized dry-run. It signs/notarizes the candidate and uploads a workflow artifact without publishing a GitHub Release. A `v*` tag repeats the same checks and publishes only after they pass.
+
+See [RELEASING.md](RELEASING.md) for credential setup and the release procedure. Do not disable Gatekeeper for this app.
 
 ## Current scope
 
-Included in V0.2.0:
+Included:
 
 - menu-bar remaining percentages for 5-hour and weekly windows
 - 20-cell detail bars and reset countdowns
@@ -134,6 +145,7 @@ Included in V0.2.0:
 - native Launch at Login control
 - universal release packaging
 - tag-driven GitHub Release workflow
+- Developer ID signing/notarization pipeline for public releases
 
 Deliberately not included:
 
@@ -151,7 +163,7 @@ The app delegates authentication to the installed Codex CLI. It never parses or 
 
 ## Project status
 
-V1 quota display and refresh behavior are host-accepted. V0.2.0 adds startup/distribution UX. The Codex `app-server` interface remains experimental and may change in future Codex releases.
+V0.2.0 is the current stable released baseline. V0.2.1 is the signed/notarized distribution candidate; it changes the release chain, not the quota/data architecture. The Codex `app-server` interface remains experimental and may change in future Codex releases.
 
 ## License
 

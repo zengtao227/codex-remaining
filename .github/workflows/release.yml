@@ -4,12 +4,18 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Version to build/sign/notarize without publishing (must match Info.plist)"
+        required: true
+        default: "v0.2.1"
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-sign-notarize-release:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,10 +23,126 @@ jobs:
       - name: Build and run self-tests
         run: bash ./scripts/test.sh
 
-      - name: Build universal release package
-        run: bash ./scripts/package-release.sh "$GITHUB_REF_NAME"
+      - name: Require Apple release secrets
+        shell: bash
+        env:
+          MACOS_DEVELOPER_ID_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_P12_BASE64 }}
+          MACOS_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          APPSTORE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_API_PRIVATE_KEY_BASE64 }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+        run: |
+          missing=0
+          for name in \
+            MACOS_DEVELOPER_ID_P12_BASE64 \
+            MACOS_DEVELOPER_ID_P12_PASSWORD \
+            APPSTORE_API_PRIVATE_KEY_BASE64 \
+            APPSTORE_API_KEY_ID \
+            APPSTORE_API_ISSUER_ID
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not configured"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install Developer ID identity and notarization key
+        shell: bash
+        env:
+          MACOS_DEVELOPER_ID_P12_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_P12_BASE64 }}
+          MACOS_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          APPSTORE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_API_PRIVATE_KEY_BASE64 }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/codex-remaining-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/codex-remaining-signing.keychain-db"
+          NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPSTORE_API_KEY_ID}.p8"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+
+          printf '%s' "$MACOS_DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$CERTIFICATE_PATH"
+          printf '%s' "$APPSTORE_API_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$NOTARY_KEY_PATH"
+          chmod 600 "$CERTIFICATE_PATH" "$NOTARY_KEY_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$MACOS_DEVELOPER_ID_P12_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk '/Developer ID Application:/{print $2}')"
+          IDENTITY_COUNT="$(printf '%s\n' "$IDENTITIES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          if [ "$IDENTITY_COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one Developer ID Application identity in the temporary keychain; found $IDENTITY_COUNT"
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+            exit 1
+          fi
+          CODE_SIGN_IDENTITY="$(printf '%s\n' "$IDENTITIES" | head -1)"
+
+          echo "CODE_SIGN_IDENTITY=$CODE_SIGN_IDENTITY" >> "$GITHUB_ENV"
+          echo "CODE_SIGN_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_PATH=$NOTARY_KEY_PATH" >> "$GITHUB_ENV"
+          echo "NOTARY_KEY_ID=$APPSTORE_API_KEY_ID" >> "$GITHUB_ENV"
+          echo "NOTARY_ISSUER_ID=$APPSTORE_API_ISSUER_ID" >> "$GITHUB_ENV"
+
+      - name: Resolve release version
+        shell: bash
+        env:
+          MANUAL_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_TAG="$MANUAL_RELEASE_TAG"
+          else
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Build, Developer ID sign, notarize, staple, and package
+        env:
+          CODEX_REMAINING_REQUIRE_NOTARIZATION: "1"
+        run: bash ./scripts/package-release.sh "$RELEASE_TAG"
+
+      - name: Upload notarized dry-run package
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Codex-Remaining-${{ env.RELEASE_TAG }}-notarized-dry-run
+          path: dist/*
+          if-no-files-found: error
 
       - name: Publish GitHub release
-        run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Codex Remaining $GITHUB_REF_NAME"
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --verify-tag \
+              --generate-notes \
+              --title "Codex Remaining $RELEASE_TAG"
+          fi
+
+      - name: Clean signing material
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${CODE_SIGN_KEYCHAIN:-}" ]; then
+            security delete-keychain "$CODE_SIGN_KEYCHAIN" >/dev/null 2>&1 || true
+          fi
+          rm -f \
+            "$RUNNER_TEMP/codex-remaining-developer-id.p12" \
+            "$RUNNER_TEMP"/AuthKey_*.p8

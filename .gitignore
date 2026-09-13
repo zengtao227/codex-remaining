@@ -2,3 +2,5 @@ build/
 dist/
 .DS_Store
 *.xcuserstate
+*.p12
+AuthKey_*.p8

@@ -79,8 +79,8 @@ else
 
   "$LIPO" "${BINARIES[@]}" -create -output "$MACOS_DIR/CodexRemaining"
 
-  # This lipo accepts only one -verify_arch argument per invocation despite
-  # its documented "<arch> ..." usage, so verify each arch separately.
+  # Some Command Line Tools versions accept only one architecture per
+  # -verify_arch invocation, so verify the universal slices individually.
   for arch in "${ARCHS[@]}"; do
     "$LIPO" "$MACOS_DIR/CodexRemaining" -verify_arch "$arch"
   done
@@ -90,11 +90,30 @@ if command -v plutil >/dev/null 2>&1; then
   plutil -lint "$APP_DIR/Contents/Info.plist" >/dev/null
 fi
 
-# Local and CI builds are ad-hoc signed. Public Gatekeeper-clean distribution
-# requires Developer ID signing and notarization, which need Apple credentials.
-if command -v codesign >/dev/null 2>&1; then
-  codesign --force --sign - "$APP_DIR" >/dev/null
-  codesign --verify --deep --strict "$APP_DIR"
+if ! command -v codesign >/dev/null 2>&1; then
+  echo "error: codesign not found" >&2
+  exit 1
 fi
+
+if [ -n "${CODE_SIGN_IDENTITY:-}" ]; then
+  SIGN_ARGS=(
+    --force
+    --options runtime
+    --timestamp
+    --sign "$CODE_SIGN_IDENTITY"
+  )
+
+  if [ -n "${CODE_SIGN_KEYCHAIN:-}" ]; then
+    SIGN_ARGS+=(--keychain "$CODE_SIGN_KEYCHAIN")
+  fi
+
+  codesign "${SIGN_ARGS[@]}" "$APP_DIR"
+else
+  # Source/CI validation remains ad-hoc signed. The release workflow supplies
+  # CODE_SIGN_IDENTITY and performs Developer ID signing + notarization.
+  codesign --force --sign - "$APP_DIR" >/dev/null
+fi
+
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 echo "$APP_DIR"
