@@ -2,7 +2,7 @@
 
 试点仓：`codex-remaining`（Claude / Mac）。第二个试点仓：`mealnote`（2026-09-16 已接入，见该仓同名文件）。
 
-**镜像对约束**：`.claude/hooks/lean_review.py` 在两仓**逐字节相同**（`md5 451de88a…`）。
+**镜像对约束**：`.claude/hooks/lean_review.py` 在两仓**逐字节相同**（`md5 308ece13…`）。
 改任何一处必须同步另一处并重新核对 md5——与 `CLAUDE.md` / `AGENTS.md` 的做法一致。
 脚本里与仓库相关的只有 `REPO`（从自身路径推导）。
 
@@ -55,8 +55,20 @@ dev-workflow 判据 → lean review → review receipt → Stop hook →  匹配
 | 7 | continuation 无法收敛 | 有界退出并标注未完成 | **PASS**（整会话） | block×2 → `达到自有上限 2 次，有界退出，仍未完成审查`，早于官方 8 次上限 |
 | 断言 | 写 receipt/日志不得自废 | 连续 PASS | **PASS** | 连续两次 stop = `['pass','pass']`；指纹自检写日志前后同为 `ab16223e…` |
 
+### 2026-09-16 补充回归：三项边界修复
+
+第二轮复审又发现三个与“审的是不是当前版本”直接相关的边界，均用临时 Git 仓做确定性复现后修复：
+
+| 场景 | 修复前 | 修复后 | 证据 |
+|---|---|---|---|
+| staged index 内容 A→B，但 worktree 字节不变 | fingerprint 不变，旧 token 可误签 | **PASS**：fingerprint 改变，旧 token `receipt` exit=1 | index blob identity 纳入 state-hash |
+| `porcelain=v1 -z` rename/copy | 第二个 NUL 字段会被误当 status record，产生假路径 | **PASS**：`sample.swift → renamed.swift` 只得到 `renamed.swift` | 按 Git `-z` 双字段格式消费 original path |
+| 已 BLOCK 后代码完全 revert 回 session baseline | `pending=true` 导致 `scope=0` 仍继续 BLOCK | **PASS**：SKIP，并清 `pending/block_count/paused` | 空 scope 代表当前已无未审代码义务 |
+
+同时回归确认：会话前已有 dirty/staged 状态仍视为 baseline；本轮提交后 clean worktree 仍会 BLOCK；有效 receipt 可连续 PASS；审后再改仍会过期；pause 在 scope 非空时仍只放行一次并保留义务。
+
 **实现期发现并修掉的两个真实缺陷**：
-1. `changed_scope` 最初没减去会话基线，会把**会话开始前就存在的未提交改动**算成本轮变更 → 场景 2 必然误拦。改为按 (path, content-hash) 与基线比对。
+1. `changed_scope` 最初没减去会话基线，会把**会话开始前就存在的未提交改动**算成本轮变更 → 场景 2 必然误拦。改为按 (path, state-hash) 与基线比对。
 2. `pause` 的 reason 取了 `argv[3]`（应为 `argv[2]`），传入的原因被丢弃、日志里只剩默认值。
 另：`__pycache__` 必须排除在指纹外，否则 hook 每跑一次就自发让 receipt 过期。
 
@@ -78,7 +90,7 @@ dev-workflow 判据 → lean review → review receipt → Stop hook →  匹配
 
 ## 状态
 
-- [x] 实现（`.claude/hooks/lean_review.py`，281 行，5 个子命令）
+- [x] 实现（`.claude/hooks/lean_review.py`，323 行，5 个子命令）
 - [x] 七类场景实测（全部 PASS，见上表）
 - [ ] 试点期观察
 - [ ] 决定是否接入 mealnote

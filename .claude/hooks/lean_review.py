@@ -54,21 +54,49 @@ def is_code(path: str) -> bool:
 
 
 def worktree_entries() -> list[tuple[str, str]]:
-    """(path, content-hash)，覆盖已暂存、未暂存与未跟踪文件。新增文件必须能被发现。"""
-    entries: list[tuple[str, str]] = []
-    raw = git("status", "--porcelain=v1", "-z", "--untracked-files=all")
-    for item in raw.split("\0"):
+    """(path, state-hash)，覆盖 index、工作区与未跟踪文件。"""
+    fields = git("status", "--porcelain=v1", "-z", "--untracked-files=all").split("\0")
+    records: list[tuple[str, str | None]] = []
+    index = 0
+    while index < len(fields):
+        item = fields[index]
         if len(item) < 4:
+            index += 1
             continue
+        status = item[:2]
         path = item[3:]
-        if is_excluded(path):
-            continue
-        full = REPO / path
-        if full.is_file():
-            digest = hashlib.sha256(full.read_bytes()).hexdigest()[:16]
+        original: str | None = None
+        # porcelain v1 -z 的 rename/copy 会把原路径放在紧随其后的 NUL 字段。
+        if "R" in status or "C" in status:
+            if index + 1 < len(fields):
+                original = fields[index + 1]
+            index += 2
         else:
-            digest = "missing"  # 删除也是变更
-        entries.append((path, digest))
+            index += 1
+        if not is_excluded(path):
+            records.append((path, original))
+
+    paths = [path for path, _ in records]
+    index_entries: dict[str, list[str]] = {}
+    if paths:
+        raw_index = git("ls-files", "-s", "-z", "--", *paths)
+        for item in raw_index.split("\0"):
+            if not item or "\t" not in item:
+                continue
+            metadata, path = item.split("\t", 1)
+            index_entries.setdefault(path, []).append(metadata)
+
+    entries: list[tuple[str, str]] = []
+    for path, original in records:
+        full = REPO / path
+        worktree_hash = (
+            hashlib.sha256(full.read_bytes()).hexdigest()[:16]
+            if full.is_file()
+            else "missing"
+        )
+        index_state = ",".join(sorted(index_entries.get(path, []))) or "absent"
+        payload = f"index:{index_state}\nworktree:{worktree_hash}\noriginal:{original or ''}"
+        entries.append((path, hashlib.sha256(payload.encode()).hexdigest()[:16]))
     return sorted(entries)
 
 
@@ -209,7 +237,13 @@ def cmd_stop(payload: dict) -> int:
         return 0
 
     scope = changed_scope(state.get("baseline_head", "HEAD"), state.get("baseline_entries", {}))
-    if not scope and not state.get("pending"):
+    if not scope:
+        # 之前可能因临时改动产生 pending；若代码已完全回到会话基线，义务自然失效。
+        state["pending"] = False
+        state["block_count"] = 0
+        state["paused"] = False
+        state.pop("pause_reason", None)
+        save(STATE_FILE, state)
         log("skip", "本轮无代码变更", 0, None, started, session)
         return 0
 
