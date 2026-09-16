@@ -73,6 +73,9 @@ def worktree_entries() -> list[tuple[str, str]]:
             index += 2
         else:
             index += 1
+        # 改名到文档/排除目录仍然删除了原代码；copy 不删除源文件。
+        if "R" in status and original and is_code(original) and not is_code(path):
+            records.append((original, None))
         if not is_excluded(path):
             records.append((path, original))
 
@@ -101,7 +104,11 @@ def worktree_entries() -> list[tuple[str, str]]:
 
 
 def fingerprint() -> str:
-    head = git("rev-parse", "HEAD").strip()
+    # 文档提交也会改变 HEAD；只绑定提交树中的代码路径、mode 与 blob。
+    head = "\0".join(
+        entry for entry in git("ls-tree", "-r", "-z", "--full-tree", "HEAD").split("\0")
+        if entry and is_code(entry.split("\t", 1)[1])
+    )
     payload = head + "".join(f"{p}:{d}" for p, d in worktree_entries() if is_code(p))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
@@ -116,8 +123,8 @@ def changed_scope(baseline_head: str, baseline_entries: dict[str, str]) -> list[
     paths = {p for p in set(current) | set(baseline_entries)
              if current.get(p) != baseline_entries.get(p)}
     try:
-        committed = git("diff", "--name-only", f"{baseline_head}..HEAD")
-        paths.update(line for line in committed.splitlines() if line)
+        committed = git("diff", "--name-only", "--no-renames", "-z", f"{baseline_head}..HEAD")
+        paths.update(path for path in committed.split("\0") if path)
     except RuntimeError:
         pass  # 基线提交不可达（rebase / reset）时退化为只看工作区，日志里可见
     return sorted(p for p in paths if is_code(p))

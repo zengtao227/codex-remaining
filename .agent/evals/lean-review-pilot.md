@@ -105,3 +105,29 @@ Claude 最终复审发现并确定性复现两项误差，均以最小修改关�
 - [x] 七类场景实测（全部 PASS，见上表）
 - [ ] 试点期观察
 - [ ] 决定是否接入 mealnote
+
+## 2026-09-16 独立收尾复审
+
+审查基线：本仓 `a50cefe`（包含 `6393107`、`51cdd0e`），mealnote `44aa33b`（包含 `4e35733`）。接手时两仓工作区干净，hook 字节一致。
+
+复现并最小修复两个 Medium：
+
+1. 有效 receipt 后仅提交 `README.md`，原 fingerprint 因包含 HEAD 提交号而改变，误报过期。改为纳入 HEAD 中代码路径的树条目（路径、mode、对象 ID）；文档提交不影响指纹，真实代码和 staged index 变化仍使其失效。
+2. `git mv sample.py retired.md` 会把代码删除误判为无代码变更。改名跨出代码范围时保留源代码路径；已提交范围用 `--no-renames -z` 保留删除端并正确处理带换行的文件名。copy 不视为删除源文件。
+
+实现 diff：每仓 hook +10/-3；无业务代码、配置、规则或新机制改动。新增 `.claude/hooks/test_lean_review.py` 为隔离临时 Git 仓的回归测试，两个仓库使用相同测试。正式运行命令：`python3 .claude/hooks/test_lean_review.py`。
+
+最终验证：
+
+- 本仓 hook **24/24 PASS**；mealnote hook **24/24 PASS**。
+- 五项指定问题均覆盖：staged-only 内容变化、真实 Git R/C NUL 双字段、完整 revert 清 pending、未暂存/暂存/已提交的非代码变更、内部 Git/Stop 异常及带换行 reason 的 JSONL 单行性。
+- 另覆盖有效 receipt 连续通过、新文件使 receipt 过期、旧 token/缺失输出拒签、已有 dirty 基线、resume、不经审查提交、pause 义务保留与有界退出。
+- `./scripts/test.sh`：构建、签名校验、Swift 自测 PASS。`51cdd0e` 的 bundle 版本读取 diff 已检查，未改业务代码。
+- mealnote：`npm run lint`（0 errors / 2 历史 warnings）、`npm run typecheck`、`npm test`（22 files / 190 tests）、`npm run build` 均退出 0；本机 Node v23.10.0，未冒称重跑 Node 22 的 CI、数据库或外部服务验收。
+- 两仓 hook 与测试 `py_compile`、`git diff --check`、hook `cmp`、测试文件 `cmp`：PASS。
+- 新测试 Ruff PASS；原 hook 的 F401（unused `os`）在基线 `a50cefe` 已存在，按本轮禁止风格清理的范围保留。mealnote 两条未使用函数警告与 Vite 配置提示也未改。
+- 外部 hook 输入按官方 JSON object 协议验收；非对象 JSON 属非法输入，未为此扩展防御机制。错误日志验证覆盖有效 payload 下的内部失败。
+
+原始失败复现和最终输出：`/tmp/lean-pilot-final-5AD6vN/{before.log,codex-final.log,mealnote-final.log}`。可重跑的测试已入库，不依赖临时日志长期保留。
+
+结论：两项新 Medium 已关闭，最终无剩余 blocking/Medium findings，本轮 pilot correctness 收尾通过。此结论不授权全局 rollout，也不声称 AI 审查判断必然正确；上方早期观察清单保留为历史记录。
