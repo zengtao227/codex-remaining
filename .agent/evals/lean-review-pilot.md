@@ -2,7 +2,7 @@
 
 试点仓：`codex-remaining`（Claude / Mac）。第二个试点仓：`mealnote`（2026-09-16 已接入，见该仓同名文件）。
 
-**镜像对约束**：`.claude/hooks/lean_review.py` 在两仓**逐字节相同**（`md5 308ece13…`）。
+**镜像对约束**：`.claude/hooks/lean_review.py` 在两仓**逐字节相同**（`md5 e2cd81a2…`）。
 改任何一处必须同步另一处并重新核对 md5——与 `CLAUDE.md` / `AGENTS.md` 的做法一致。
 脚本里与仓库相关的只有 `REPO`（从自身路径推导）。
 
@@ -67,6 +67,17 @@ dev-workflow 判据 → lean review → review receipt → Stop hook →  匹配
 
 同时回归确认：会话前已有 dirty/staged 状态仍视为 baseline；本轮提交后 clean worktree 仍会 BLOCK；有效 receipt 可连续 PASS；审后再改仍会过期；pause 在 scope 非空时仍只放行一次并保留义务。
 
+### 2026-09-16 最终复审：两项 Medium 修复
+
+Claude 最终复审发现并确定性复现两项误差，均以最小修改关闭：
+
+| 场景 | 修复前 | 修复后 | 证据 |
+|---|---|---|---|
+| 有效 receipt 后只改 `README.md` / `.agent/handoff.md` | fingerprint 改变，误报 receipt 过期 | **PASS**：fingerprint 只纳入 `is_code(path)`，两次 Stop 仍 PASS | 非代码路径与 scope 策略一致 |
+| Stop/SessionStart 内部异常 | uncaught traceback + 非 2 exit，Claude 放行且日志为空 | **PASS**：error 写入 `log.jsonl`、stderr 可见、hook 返回 0 | CLI 子命令异常仍返回 1，避免把 receipt/review-start 失败当成功 |
+
+回归确认 staged index A→B（worktree 不变）仍改变 fingerprint；clean baseline 下 BLOCK 后完整 revert 仍清 pending 并 SKIP；`py_compile` 与两仓 `cmp` 均通过。
+
 **实现期发现并修掉的两个真实缺陷**：
 1. `changed_scope` 最初没减去会话基线，会把**会话开始前就存在的未提交改动**算成本轮变更 → 场景 2 必然误拦。改为按 (path, state-hash) 与基线比对。
 2. `pause` 的 reason 取了 `argv[3]`（应为 `argv[2]`），传入的原因被丢弃、日志里只剩默认值。
@@ -90,7 +101,7 @@ dev-workflow 判据 → lean review → review receipt → Stop hook →  匹配
 
 ## 状态
 
-- [x] 实现（`.claude/hooks/lean_review.py`，323 行，5 个子命令）
+- [x] 实现（`.claude/hooks/lean_review.py`，332 行，5 个子命令）
 - [x] 七类场景实测（全部 PASS，见上表）
 - [ ] 试点期观察
 - [ ] 决定是否接入 mealnote

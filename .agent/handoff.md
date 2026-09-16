@@ -1,6 +1,7 @@
 # Handoff — codex-remaining
 
 ## Completed
+- 2026-09-16：最终复审再关闭两项 Medium：非代码改动不再使 receipt 失效；hook 内部异常现在可观测并写 error 日志。两仓镜像 md5 `e2cd81a2…`。
 - 2026-09-16：接入 lean review auto-check 试点（分支 `feat/lean-review-pilot`，commit `8a7077e`）。机制七类场景全绿。
 - 2026-09-16：用瘦身判据对**真实代码**做了第一次审查（此前的测试只用 `scratch_probe.swift` 这类探针验证机制，没有审过真实代码）。
 - 2026-09-16：修复 lean-review 三个边界：staged index 指纹、rename/copy `-z` 解析、scope 回到 0 后清失效 pending；两仓镜像 md5 `308ece13…`，定向与核心回归全绿。

@@ -102,7 +102,7 @@ def worktree_entries() -> list[tuple[str, str]]:
 
 def fingerprint() -> str:
     head = git("rev-parse", "HEAD").strip()
-    payload = head + "".join(f"{p}:{d}" for p, d in worktree_entries())
+    payload = head + "".join(f"{p}:{d}" for p, d in worktree_entries() if is_code(p))
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
@@ -316,7 +316,16 @@ def main() -> int:
             payload = json.loads(sys.stdin.read() or "{}")
         except json.JSONDecodeError:
             payload = {}
-    return COMMANDS[command](payload)
+    try:
+        return COMMANDS[command](payload)
+    except Exception as exc:
+        # Stop/SessionStart 是补救型 hook：内部失败不伪装成通过，必须留下可观测 error。
+        try:
+            log("error", f"hook 异常：{exc}", 0, None, time.time(), payload.get("session_id", ""))
+        except Exception:
+            pass
+        print(f"lean review hook error: {exc}", file=sys.stderr)
+        return 0 if command in ("session-start", "stop") else 1
 
 
 if __name__ == "__main__":
