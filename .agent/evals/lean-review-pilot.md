@@ -1,6 +1,10 @@
 # Lean Review Auto-Check Pilot — 验收条件
 
-试点仓：`codex-remaining`（Claude / Mac，单平台单项目）。第二个试点仓：`mealnote`（已确认要做，等本仓通过后接入）。
+试点仓：`codex-remaining`（Claude / Mac）。第二个试点仓：`mealnote`（2026-09-16 已接入，见该仓同名文件）。
+
+**镜像对约束**：`.claude/hooks/lean_review.py` 在两仓**逐字节相同**（`md5 451de88a…`）。
+改任何一处必须同步另一处并重新核对 md5——与 `CLAUDE.md` / `AGENTS.md` 的做法一致。
+脚本里与仓库相关的只有 `REPO`（从自身路径推导）。
 
 ## 目标（收窄后的准确表述）
 
