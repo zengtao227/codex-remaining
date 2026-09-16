@@ -2,3 +2,7 @@ build/
 dist/
 .DS_Store
 *.xcuserstate
+
+# lean review 试点的本地状态与流水（不入库）
+.agent/lean-review/
+__pycache__/
