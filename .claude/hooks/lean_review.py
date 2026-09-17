@@ -290,14 +290,18 @@ def cmd_stop(payload: dict) -> int:
         "decision": "block",
         "reason": (
             f"{why}。本轮变更 {len(scope)} 个文件：{', '.join(scope[:10])}。\n"
-            f"请按 ~/.codex/skills/dev-workflow/SKILL.md 的「瘦身判据」与「末次审查」审这些变更，"
+            f"请按 ~/.codex/skills/dev-workflow/SKILL.md 的「瘦身判据」与「末次审查」审这些变更。"
+            f"本轮若新增能力／组件／依赖／责任层，或新增状态／配置／补偿机制，"
+            f"先确认方向：如果今天还没有这套实现，为了达到同样目标，我们还会选择这条路径吗？"
             f"然后：\n"
             f"1) TOKEN=$(python3 .claude/hooks/lean_review.py review-start)\n"
             f"2) 把审查结论写进一个文件（例如 .agent/lean-review/review-latest.md）\n"
             f"3) python3 .claude/hooks/lean_review.py receipt --token $TOKEN "
-            f"--review-file .agent/lean-review/review-latest.md --outcome none --validation '<实际跑的检查与结果>'\n"
+            f"--review-file .agent/lean-review/review-latest.md --outcome '<从 deleted|reused|kept|unverified|none 中选择>' "
+            f"--validation '<实际跑的检查与结果>'\n"
             f"「无需简化」是合法结论；强制的是检查，不是强制改代码。"
-            f"若在等待我确认，改为执行：python3 .claude/hooks/lean_review.py pause '<原因>'"
+            f"仅当缺少用户输入导致审查本身无法完成时，执行：python3 .claude/hooks/lean_review.py pause '<原因>'；"
+            f"若审查已完成但方向需用户批准，使用 outcome=unverified 签发 receipt，并在回复中向用户确认。"
         ),
     }, ensure_ascii=False))
     return 0
