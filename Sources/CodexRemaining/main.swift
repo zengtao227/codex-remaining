@@ -553,7 +553,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         let fiveHour = snapshot?.fiveHour
         let weekly = snapshot?.weekly
 
-        statusItem.button?.title = "⚡ 5h \(percentText(fiveHour))  W \(percentText(weekly))"
+        statusItem.button?.title = "⚡ 5h \(percentText(fiveHour)) (\(resetCountdown(fiveHour?.resetsAt)))  W \(percentText(weekly))"
 
         if let fiveHour {
             fiveHourItem.title = "5h      \(progressBar(remainingPercent: fiveHour.remainingPercent)) \(fiveHour.remainingPercent)%"
