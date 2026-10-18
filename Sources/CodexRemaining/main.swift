@@ -293,6 +293,7 @@ private struct CodexClient {
         let applications = URL(fileURLWithPath: "/Applications", isDirectory: true)
         for relativePath in [
             "Chat" + "GPT.app/Contents/Resources/codex",
+            "Chat" + "GPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
             "Codex.app/Contents/Resources/codex"
         ] {
             let url = applications.appendingPathComponent(relativePath)
